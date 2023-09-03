@@ -1,3 +1,6 @@
+-- Punto 5.
+--============================================================================================
+
 -- USE pepitas;
 -- DROP DATABASE pepitas;
 
@@ -132,7 +135,8 @@ CREATE TABLE IF NOT EXISTS suministrado (
 );
 
 
--- Inserciones
+-- Punto 6. Inserciones
+--============================================================================================
 
 -- Inserción en la tabla turno_laboral
 INSERT INTO turno_laboral (nombre_turno, hora_inicio, hora_fin) VALUES 
@@ -327,3 +331,184 @@ INSERT INTO prenda_lujo (id_referencia, estrato) VALUES
 (11, 3),
 (12, 4),
 (13, 5);   
+
+
+
+-- Punto 7.
+--============================================================================================
+
+-- La primera consulta debe implementar 4 JOINS o más:
+
+-- Enunciado: “Obtener una lista de lotes de producción junto con sus referencias asociadas, 
+-- los supervisores responsables de los procesos de producción a los que están asignados y los operarios que intervinieron en cada lote.”
+
+SELECT
+    L.id_lote AS Lote_ID,
+    R.nombre_referencia AS Referencia,
+    S.nombre_supervisor AS Supervisor,
+    O.nombre_operario AS Operario
+FROM lote_produccion AS L
+JOIN referencia AS R ON L.id_referencia = R.id_referencia
+JOIN tiene_asignado AS TA ON L.id_lote = TA.id_lote
+JOIN proceso_produccion AS PP ON TA.id_proceso = PP.id_proceso
+JOIN supervisa AS SV ON PP.id_proceso = SV.id_proceso
+JOIN supervisor AS S ON SV.cedula_supervisor = S.cedula_supervisor
+JOIN interviene AS I ON L.id_lote = I.id_lote
+JOIN operario AS O ON I.cedula_operario = O.cedula_operario;
+
+
+
+-- La segunda consulta debe implementar un LEFT, RIGHT o FULL JOIN.
+
+-- Enunciado: "Obtener una lista de todos los supervisores, junto con los lotes de producción 
+-- a los que están asignados, incluso si algunos supervisores no están asignados a ningún lote."
+
+SELECT  S.nombre_supervisor AS Supervisor, L.id_lote AS Lote_ID
+FROM supervisor AS S
+LEFT JOIN supervisa AS SV ON S.cedula_supervisor = SV.cedula_supervisor
+LEFT JOIN proceso_produccion AS PP ON SV.id_proceso = PP.id_proceso
+LEFT JOIN tiene_asignado AS TA ON PP.id_proceso = TA.id_proceso
+LEFT JOIN lote_produccion AS L ON TA.id_lote = L.id_lote;
+
+
+
+-- La tercera consulta debe tener operaciones entre conjuntos.
+
+-- Enunciado: "Obtener una lista de nombres de operarios que han intervenido en algún 
+-- lote de producción y una lista de supervisores que están a cargo de procesos de producción. Combinar ambas listas en un único resultado."
+
+SELECT nombre_operario AS Nombre
+FROM operario
+UNION
+SELECT nombre_supervisor AS Nombre
+FROM supervisor;
+
+
+-- La cuarta consulta debe implementar el concepto de subconsultas.
+	
+-- Enunciado: "Obtener una lista de referencias de productos con la cantidad total de unidades 
+-- producidas para cada referencia y el nombre del supervisor que está a cargo del proceso de producción de esa referencia."
+
+
+SELECT
+    R.nombre_referencia AS Referencia,
+    COALESCE(SUM(LP.cant_unidades), 0) AS Cantidad_Unidades,
+    (
+        SELECT S.nombre_supervisor
+        FROM supervisor S
+        JOIN supervisa SP ON S.cedula_supervisor = SP.cedula_supervisor
+        JOIN proceso_produccion PP ON SP.id_proceso = PP.id_proceso
+        LIMIT 1
+    ) AS Supervisor
+FROM referencia R
+LEFT JOIN lote_produccion LP ON R.id_referencia = LP.id_referencia
+GROUP BY R.nombre_referencia;
+
+
+-- Punto 8.
+--============================================================================================
+
+-- Creación de la tabla de registro de errores
+CREATE TABLE materia_prima_stock_bajo (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    id_materia_prima int,
+    faltantes_para_completar_stock_minimo int,
+    fecha DATETIME,
+    FOREIGN KEY (id_materia_prima) REFERENCES materia_prima(id_materia_prima)
+);
+-- Creación de la tabla de registro de errores
+CREATE TABLE registro_errores (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    mensaje VARCHAR(255)
+);
+
+-- Creación de la Función de Usuario:
+CREATE FUNCTION stock_bajo(stock_actual INT, stock_minimo INT) RETURNS BOOL
+BEGIN
+    DECLARE resultado BOOL;
+    SET resultado = FALSE;
+    IF stock_actual <= stock_minimo THEN
+        SET resultado = TRUE;
+    END IF;
+
+    RETURN resultado;
+END;
+
+
+-- Creación del trigger:
+CREATE TRIGGER update_materia_prima
+AFTER UPDATE ON materia_prima
+FOR EACH ROW
+BEGIN
+    DECLARE stock_actual INT;
+    DECLARE stock_minimo INT;
+    DECLARE faltantes_para_completar_stock_minimo INT;
+    DECLARE es_stock_bajo BOOL;
+
+    -- Obtener el stock actual y el stock mínimo
+    SET stock_actual = NEW.cantidad;
+    SET stock_minimo = NEW.stock_minimo;
+    SET faltantes_para_completar_stock_minimo = ABS(stock_actual - stock_minimo);
+
+    -- Llama a la función stock_bajo y almacena el resultado
+    SET es_stock_bajo = stock_bajo(stock_actual, stock_minimo);
+
+    -- Insertamos en la tabla de materia_prima_stock_bajo el Id de la materia prima con la fecha
+    -- de detección de stock bajo.
+    IF es_stock_bajo THEN
+        INSERT INTO materia_prima_stock_bajo (id_materia_prima, faltantes_para_completar_stock_minimo, fecha) VALUES (NEW.id_materia_prima, faltantes_para_completar_stock_minimo, NOW());
+    ELSE
+        DELETE FROM materia_prima_stock_bajo WHERE id_materia_prima = NEW.id_materia_prima;
+    END IF;
+END;
+
+
+
+
+--Creación del SP:
+CREATE PROCEDURE recibir_suministro(
+    IN p_id_materia_prima INT,
+    IN p_id_proveedor INT,
+    IN p_cantidad_suministrada DOUBLE
+)
+BEGIN
+    DECLARE stock_actual DOUBLE;
+    DECLARE no_existe BOOLEAN DEFAULT FALSE;  -- Variable para verificar si la materia prima no existe
+        DECLARE mensaje_error VARCHAR(255);  -- Variable para almacenar el mensaje de error
+
+    
+    -- Manejador de errores
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;  -- Deshacer cambios en caso de error
+        RESIGNAL;   -- Volver a lanzar la excepción para que se maneje fuera del procedimiento
+    END;
+    
+    -- Iniciar una transacción
+    START TRANSACTION;
+    
+    -- Obtener el stock actual de la materia prima
+    SELECT cantidad INTO stock_actual FROM materia_prima WHERE id_materia_prima = p_id_materia_prima LIMIT 1;
+    
+    -- Verificar si la consulta encontró un registro
+    IF stock_actual IS NULL THEN
+        SET no_existe = TRUE;
+        SET mensaje_error = CONCAT('Materia prima con id: ', p_id_materia_prima, ' no encontrada.');
+    END IF;
+    
+    -- Si la materia prima no existe, lanza una señal de error personalizada
+    IF no_existe THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = mensaje_error;
+        INSERT INTO registro_errores(mensaje) VALUES (mensaje_error);
+    ELSE
+        -- Actualizar el stock de la materia prima
+        UPDATE materia_prima
+        SET cantidad = cantidad + p_cantidad_suministrada
+        WHERE id_materia_prima = p_id_materia_prima;
+      
+    END IF;    
+    -- Confirmar la transacción
+    COMMIT;    
+END;
+
+CALL recibir_suministro(1, 2, 100.0);
