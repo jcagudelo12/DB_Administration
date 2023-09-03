@@ -1,5 +1,5 @@
-USE pepitas;
-DROP DATABASE pepitas;
+-- USE pepitas;
+-- DROP DATABASE pepitas;
 
 -- Create data base
 CREATE DATABASE IF NOT EXISTS pepitas;
@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS prenda_ordinaria (
     FOREIGN KEY(id_referencia) REFERENCES referencia(id_referencia)
 );
 
-CREATE TABLE IF NOT EXISTS prensa_lujo ( 
+CREATE TABLE IF NOT EXISTS prenda_lujo ( 
 	id_referencia INT NOT NULL,
     estrato SMALLINT,
     PRIMARY KEY(id_referencia),
@@ -155,10 +155,11 @@ INSERT INTO trabaja (id_turno, cedula_supervisor, fecha_inicio, fecha_fin) VALUE
 
 -- Inserción en la tabla proceso_produccion
 INSERT INTO proceso_produccion (nombre_proceso) VALUES ('Corte'),
-('Estampacion y bordado'),
-('Union de mangas'),
-('Coser cuellos'),
-('Coser cuellos');
+('Corte de Telas'),
+('Costura'),
+('Estampado'),
+('Teñido'),
+('Bordado');
 
 -- Inserción en la tabla supervisa
 INSERT INTO supervisa (cedula_supervisor, id_proceso) VALUES 
@@ -207,18 +208,18 @@ INSERT INTO interviene (id_lote, cedula_operario, fecha_hora_inicio_trabajo) VAL
 
 -- Inserción en la tabla tiene_asignado
 INSERT INTO tiene_asignado (id_lote, id_proceso, fecha_hora_ingreso) VALUES
-(1, 1, '2023-09-01 08:00:00'), -- Lote 1 asignado al Proceso 1
-(1, 2, '2023-09-01 10:30:00'), -- Lote 1 asignado al Proceso 2
-(2, 2, '2023-09-02 09:15:00'), -- Lote 2 asignado al Proceso 2
-(2, 3, '2023-09-02 12:45:00'), -- Lote 2 asignado al Proceso 3
-(3, 3, '2023-09-03 07:30:00'), -- Lote 3 asignado al Proceso 3
-(3, 4, '2023-09-03 11:00:00'), -- Lote 3 asignado al Proceso 4
-(4, 4, '2023-09-04 08:45:00'), -- Lote 4 asignado al Proceso 4
-(4, 5, '2023-09-04 13:15:00'), -- Lote 4 asignado al Proceso 5
-(5, 5, '2023-09-05 07:00:00'), -- Lote 5 asignado al Proceso 5
-(5, 1, '2023-09-05 10:30:00'), -- Lote 5 asignado al Proceso 1
-(6, 1, '2023-09-06 09:15:00'), -- Lote 6 asignado al Proceso 1
-(6, 2, '2023-09-06 12:45:00'); -- Lote 6 asignado al Proceso 2
+(1, 1, '2023-09-01 08:00:00'),
+(1, 2, '2023-09-01 10:30:00'),
+(2, 2, '2023-09-02 09:15:00'),
+(2, 3, '2023-09-02 12:45:00'),
+(3, 3, '2023-09-03 07:30:00'),
+(3, 4, '2023-09-03 11:00:00'),
+(4, 4, '2023-09-04 08:45:00'),
+(4, 5, '2023-09-04 13:15:00'),
+(5, 5, '2023-09-05 07:00:00'),
+(5, 1, '2023-09-05 10:30:00'),
+(6, 1, '2023-09-06 09:15:00'),
+(6, 2, '2023-09-06 12:45:00');
 
 
 -- Inserción en la tabla materia_prima
@@ -261,47 +262,68 @@ INSERT INTO proveedor (nombre_proveedor, tipo_proveedor) VALUES
 
 -- Asociando proveedores con materias primas en la tabla suministrado
 INSERT INTO suministrado (id_materia_prima, id_proveedor, cantidad) VALUES
-(1, 1, 1000),    -- Proveedor A suministra Tela de algodón
-(2, 2, 800),     -- Proveedor B suministra Hilo de poliéster
-(3, 3, 500),     -- Proveedor C suministra Cremalleras
-(4, 4, 700),     -- Proveedor D suministra Botones de plástico
-(5, 5, 400),     -- Proveedor E suministra Forro de satén
-(6, 6, 200),     -- Proveedor F suministra Encaje
-(7, 7, 350),     -- Proveedor G suministra Tela de lino
-(8, 8, 750),     -- Proveedor H suministra Hilo de seda
-(9, 9, 250),     -- Proveedor I suministra Cintas elásticas
-(10, 10, 600),   -- Proveedor J suministra Tela de denim
-(1, 2, 900),     -- Proveedor B suministra Tela de algodón
-(2, 3, 750),     -- Proveedor C suministra Hilo de poliéster
-(3, 4, 450),     -- Proveedor D suministra Cremalleras
-(4, 5, 600),     -- Proveedor E suministra Botones de plástico
-(5, 6, 300),     -- Proveedor F suministra Forro de satén
-(6, 7, 250),     -- Proveedor G suministra Encaje
-(7, 8, 500),     -- Proveedor H suministra Tela de lino
-(8, 9, 800),     -- Proveedor I suministra Hilo de seda
-(9, 10, 350),    -- Proveedor J suministra Cintas elásticas
-(10, 1, 700);    -- Proveedor A suministra Tela de denim
+(1, 1, 1000),
+(2, 2, 800),
+(3, 3, 500),
+(4, 4, 700),
+(5, 5, 400),
+(6, 6, 200),
+(7, 7, 350),
+(8, 8, 750),
+(9, 9, 250),
+(10, 10, 600),
+(1, 2, 900),
+(2, 3, 750),
+(3, 4, 450),
+(4, 5, 600),
+(5, 6, 300),
+(6, 7, 250),
+(7, 8, 500),
+(8, 9, 800),
+(9, 10, 350),
+(10, 1, 700); 
 
 
 -- Asociando referencias con materias primas en la tabla emplea
 INSERT INTO emplea (id_referencia, id_materia_prima) VALUES
-(1, 1),    -- Referencia 1 emplea Tela de algodón
-(1, 2),    -- Referencia 1 emplea Hilo de poliéster
-(2, 3),    -- Referencia 2 emplea Cremalleras
-(2, 4),    -- Referencia 2 emplea Botones de plástico
-(3, 5),    -- Referencia 3 emplea Forro de satén
-(3, 6),    -- Referencia 3 emplea Encaje
-(4, 7),    -- Referencia 4 emplea Tela de lino
-(4, 8),    -- Referencia 4 emplea Hilo de seda
-(5, 9),    -- Referencia 5 emplea Cintas elásticas
-(5, 10),   -- Referencia 5 emplea Tela de denim
-(6, 1),    -- Referencia 6 emplea más Tela de algodón
-(6, 2),    -- Referencia 6 emplea más Hilo de poliéster
-(7, 3),    -- Referencia 7 emplea más Cremalleras
-(7, 4),    -- Referencia 7 emplea más Botones de plástico
-(8, 5),    -- Referencia 8 emplea más Forro de satén
-(8, 6),    -- Referencia 8 emplea más Encaje
-(9, 7),    -- Referencia 9 emplea más Tela de lino
-(9, 8),    -- Referencia 9 emplea más Hilo de seda
-(10, 9),   -- Referencia 10 emplea más Cintas elásticas
-(10, 10);  -- Referencia 10 emplea más Tela de denim
+(1, 1),
+(1, 2),
+(2, 3),
+(2, 4),
+(3, 5),
+(3, 6),
+(4, 7),
+(4, 8),
+(5, 9),
+(5, 10),
+(6, 1),
+(6, 2),
+(7, 3),
+(7, 4),
+(8, 5),
+(8, 6),
+(9, 7),
+(9, 8),
+(10, 9),
+(10, 10);  
+
+
+-- Asociando todas las referencias con costos en la tabla prenda_ordinaria
+INSERT INTO prenda_ordinaria (id_referencia, costo_prod) VALUES
+(1, 25000.00),
+(2, 18000.00),
+(3, 12000.00),
+(4, 15000.00),
+(5, 22000.00),
+(6, 8000.00);    
+
+
+-- Asociando referencias con estratos en la tabla prenda_lujo
+INSERT INTO prenda_lujo (id_referencia, estrato) VALUES
+(7, 3),
+(8, 4),
+(9, 5),
+(10, 6),
+(11, 3),
+(12, 4),
+(13, 5);   
