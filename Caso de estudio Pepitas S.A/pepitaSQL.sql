@@ -411,52 +411,67 @@ GROUP BY R.nombre_referencia;
 -- Creación de la tabla de registro de errores
 CREATE TABLE materia_prima_stock_bajo (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    id_materia_prima int,
-    faltantes_para_completar_stock_minimo int,
+    id_materia_prima INT,
+    cantidad_actual FLOAT,
+    stock_minimo FLOAT,
+    cantidad_por_debajo_del_minimo FLOAT,
     fecha DATETIME,
     FOREIGN KEY (id_materia_prima) REFERENCES materia_prima(id_materia_prima)
 );
+
 -- Creación de la tabla de registro de errores
 CREATE TABLE registro_errores (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    mensaje VARCHAR(255)
+    mensaje VARCHAR(255),
+    fecha TIMESTAMP
 );
 
 -- Creación de la Función de Usuario:
-CREATE FUNCTION stock_bajo(stock_actual INT, stock_minimo INT) RETURNS BOOL
+CREATE FUNCTION validar_stock_disponible(id INT, cantidad_a_retirar DOUBLE) RETURNS BOOL
 BEGIN
     DECLARE resultado BOOL;
-    SET resultado = FALSE;
-    IF stock_actual <= stock_minimo THEN
-        SET resultado = TRUE;
-    END IF;
+    DECLARE cantidad_materia DOUBLE;
+    
+    SET resultado = TRUE;
+    
+    SELECT cantidad INTO cantidad_materia
+    FROM materia_prima  
+    WHERE id_materia_prima = id;
 
+    IF cantidad_a_retirar > cantidad_materia THEN
+        SET resultado = FALSE;
+    END IF;
+    
     RETURN resultado;
 END;
 
 
 -- Creación del trigger:
-CREATE TRIGGER update_materia_prima
+CREATE TRIGGER alertar_stock_bajo
 AFTER UPDATE ON materia_prima
 FOR EACH ROW
 BEGIN
     DECLARE stock_actual INT;
     DECLARE stock_minimo INT;
-    DECLARE faltantes_para_completar_stock_minimo INT;
-    DECLARE es_stock_bajo BOOL;
+    DECLARE cantidad_por_debajo_del_minimo INT;    
+    DECLARE alerta_existente INT;    
 
     -- Obtener el stock actual y el stock mínimo
     SET stock_actual = NEW.cantidad;
     SET stock_minimo = NEW.stock_minimo;
-    SET faltantes_para_completar_stock_minimo = ABS(stock_actual - stock_minimo);
-
-    -- Llama a la función stock_bajo y almacena el resultado
-    SET es_stock_bajo = stock_bajo(stock_actual, stock_minimo);
-
-    -- Insertamos en la tabla de materia_prima_stock_bajo el Id de la materia prima con la fecha
-    -- de detección de stock bajo.
-    IF es_stock_bajo THEN
-        INSERT INTO materia_prima_stock_bajo (id_materia_prima, faltantes_para_completar_stock_minimo, fecha) VALUES (NEW.id_materia_prima, faltantes_para_completar_stock_minimo, NOW());
+    SET cantidad_por_debajo_del_minimo = stock_actual - stock_minimo;
+    
+    SELECT COUNT(*) INTO alerta_existente FROM materia_prima_stock_bajo WHERE id_materia_prima = NEW.id_materia_prima;
+    
+    IF cantidad_por_debajo_del_minimo <= 0 THEN
+        IF alerta_existente = 0 THEN
+            INSERT INTO materia_prima_stock_bajo (id_materia_prima, cantidad_actual, stock_minimo, cantidad_por_debajo_del_minimo, fecha) 
+            VALUES (NEW.id_materia_prima, stock_actual, stock_minimo, ABS(cantidad_por_debajo_del_minimo), NOW());
+        ELSE
+            UPDATE materia_prima_stock_bajo SET cantidad_actual = stock_actual, stock_minimo = stock_minimo, 
+            cantidad_por_debajo_del_minimo = ABS(cantidad_por_debajo_del_minimo), fecha = NOW()
+            WHERE id_materia_prima = NEW.id_materia_prima; 
+        END IF;
     ELSE
         DELETE FROM materia_prima_stock_bajo WHERE id_materia_prima = NEW.id_materia_prima;
     END IF;
@@ -466,49 +481,63 @@ END;
 
 
 --Creación del SP:
-CREATE PROCEDURE recibir_suministro(
-    IN p_id_materia_prima INT,
-    IN p_id_proveedor INT,
-    IN p_cantidad_suministrada DOUBLE
+CREATE PROCEDURE retirar_stock(
+    p_id_materia_prima INT,
+    p_cantidad_retirada DOUBLE
 )
 BEGIN
-    DECLARE stock_actual DOUBLE;
-    DECLARE no_existe BOOLEAN DEFAULT FALSE;  -- Variable para verificar si la materia prima no existe
-        DECLARE mensaje_error VARCHAR(255);  -- Variable para almacenar el mensaje de error
+    DECLARE es_stock_valido BOOL;
+    DECLARE no_existe BOOLEAN DEFAULT TRUE;
+    DECLARE cantidad_default DOUBLE;
+    DECLARE mensaje_error VARCHAR(255);
 
-    
-    -- Manejador de errores
+    -- Declara variables para manejar el cursor
+    DECLARE done INT DEFAULT 0;
+    DECLARE materia_prima_cursor CURSOR FOR
+        SELECT id_materia_prima, cantidad
+        FROM materia_prima
+        WHERE id_materia_prima = p_id_materia_prima;
+
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
-        ROLLBACK;  -- Deshacer cambios en caso de error
-        RESIGNAL;   -- Volver a lanzar la excepción para que se maneje fuera del procedimiento
+        -- Manejar el error aquí, por ejemplo, registrar un mensaje de error o realizar una acción específica.
+        SET mensaje_error = 'Error de clave externa: ';
+        ROLLBACK; -- Realizar un rollback en caso de error.
     END;
-    
-    -- Iniciar una transacción
-    START TRANSACTION;
-    
-    -- Obtener el stock actual de la materia prima
-    SELECT cantidad INTO stock_actual FROM materia_prima WHERE id_materia_prima = p_id_materia_prima LIMIT 1;
-    
-    -- Verificar si la consulta encontró un registro
-    IF stock_actual IS NULL THEN
-        SET no_existe = TRUE;
-        SET mensaje_error = CONCAT('Materia prima con id: ', p_id_materia_prima, ' no encontrada.');
-    END IF;
-    
-    -- Si la materia prima no existe, lanza una señal de error personalizada
-    IF no_existe THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = mensaje_error;
-        INSERT INTO registro_errores(mensaje) VALUES (mensaje_error);
-    ELSE
-        -- Actualizar el stock de la materia prima
+
+    -- Maneja errores
+    DECLARE CONTINUE HANDLER FOR NOT FOUND 
+    BEGIN
+        -- Inserta un registro de error en la tabla registro_errores
+        INSERT INTO registro_errores (mensaje)
+        VALUES (CONCAT('El ID de materia prima ', p_id_materia_prima, ' no existe en la base de datos.'));
+        SET done = 1;
+    END;
+
+    -- Llama a la función para validar el stock y almacena el resultado
+    SET es_stock_valido = validar_stock_disponible(p_id_materia_prima, p_cantidad_retirada);
+
+    IF es_stock_valido THEN
+        -- Abre el cursor
+        OPEN materia_prima_cursor;
+
+        -- Inicializa la variable para la cantidad
+        SET cantidad_default = 0;
+
+        -- Recorre los registros del cursor
+        FETCH materia_prima_cursor INTO p_id_materia_prima, cantidad_default;
+
+        -- Actualiza la cantidad
         UPDATE materia_prima
-        SET cantidad = cantidad + p_cantidad_suministrada
+        SET cantidad = cantidad_default - p_cantidad_retirada
         WHERE id_materia_prima = p_id_materia_prima;
-      
-    END IF;    
-    -- Confirmar la transacción
-    COMMIT;    
+
+        -- Cierra el cursor
+        CLOSE materia_prima_cursor;
+    END IF;
+
 END;
 
-CALL recibir_suministro(1, 2, 100.0);
+
+
+CALL retirar_stock(80, 10.0);
