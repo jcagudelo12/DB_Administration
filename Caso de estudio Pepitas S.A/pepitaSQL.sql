@@ -427,6 +427,10 @@ CREATE TABLE registro_errores (
 );
 
 -- Creación de la Función de Usuario:
+-- Enunciado: Crear una función que valide si una materia prima tiene unidades disponibles para descontar.
+-- La función debe recibir el id de la materia prima y la cantidad que se desea retirar, y retornará FALSE
+-- si la cantidad solicitada es mayor a la cantidad que tiene relacionada la materia prima en la db, 
+-- de lo contrario retorna TRUE. 
 CREATE FUNCTION validar_stock_disponible(id INT, cantidad_a_retirar DOUBLE) RETURNS BOOL
 BEGIN
     DECLARE resultado BOOL;
@@ -447,6 +451,18 @@ END;
 
 
 -- Creación del trigger:
+-- Enunciado: Crear un TRIGGER que se dispare cuando se realice un UPDATE en la tabla materia_prima, este TRIGGER deberá
+-- insertar un registro de alerta en la tabla materia_prima_stock_bajo. Este manejo de alertas debe de cumplir las siguientes condiciones:
+-- 1. Si en la cantidad_por_debajo_del_minimo es menor o igual a cero y no existe ningún registro relacionado con el id de la materia prima 
+-- en la tabla materia_prima_stock_bajo, se deben de insertar los siguientes campos: id_materia_prima, cantidad_actual(viene de la matteria prima), 
+-- stock_minimo(viene de la matteria prima), cantidad_por_debajo_del_minimo(se calcula haciendo la resta entre cantidad y stock_minimo), fecha.
+-- 2. Si en la cantidad_por_debajo_del_minimo es menor o igual a cero y existe un registro relacionado con el id de la materia prima 
+-- en la tabla materia_prima_stock_bajo, se deben de actualizar los siguientes campos: cantidad_actual(viene de la matteria prima), 
+-- stock_minimo(viene de la matteria prima), cantidad_por_debajo_del_minimo(se calcula haciendo la resta entre cantidad y stock_minimo), fecha.
+-- 3. Si el cálculo de la cantidad_por_debajo_del_minimo es mayor a cero, eliminar la alerta relacionada a la materia prima. Esta alerta se elimina
+-- porque el inventario fue reabastecido con una cantidad superior a la del stock mínimo.
+-- Tener en cuenta que ningún valor almacenado en la tabla dede de ser negativo.
+
 CREATE TRIGGER alertar_stock_bajo
 AFTER UPDATE ON materia_prima
 FOR EACH ROW
@@ -481,18 +497,22 @@ END;
 
 
 --Creación del SP:
+-- Enunciado: Crear un SP que perimta retirar stock de la materia prima. El SP debe de recibir el id de la materia prima y la cantidad 
+-- que se desea descontar del inventario.
+-- El SP debe de usar la función creada en los pasos anteriores para identificar si es posible desconatar las unidades solicitadas
+-- del inventario.
+-- En caso de presentar un error se debe de almacenar el mensaje de error y la fecha en la tabla registro_errores.
 CREATE PROCEDURE retirar_stock(
     p_id_materia_prima INT,
     p_cantidad_retirada DOUBLE
 )
 BEGIN
-    DECLARE es_stock_valido BOOL;
+    DECLARE es_stock_valido BOOL DEFAULT FALSE;
     DECLARE no_existe BOOLEAN DEFAULT TRUE;
     DECLARE cantidad_default DOUBLE;
     DECLARE mensaje_error VARCHAR(255);
 
     -- Declara variables para manejar el cursor
-    DECLARE done INT DEFAULT 0;
     DECLARE materia_prima_cursor CURSOR FOR
         SELECT id_materia_prima, cantidad
         FROM materia_prima
@@ -501,7 +521,7 @@ BEGIN
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
         -- Manejar el error aquí, por ejemplo, registrar un mensaje de error o realizar una acción específica.
-        SET mensaje_error = 'Error de clave externa: ';
+        SET mensaje_error = 'Error de clave externa.';
         ROLLBACK; -- Realizar un rollback en caso de error.
     END;
 
@@ -509,9 +529,10 @@ BEGIN
     DECLARE CONTINUE HANDLER FOR NOT FOUND 
     BEGIN
         -- Inserta un registro de error en la tabla registro_errores
+        SET mensaje_error = CONCAT('Materia prima con id: ', p_id_materia_prima, ' no encontrada.');
         INSERT INTO registro_errores (mensaje)
-        VALUES (CONCAT('El ID de materia prima ', p_id_materia_prima, ' no existe en la base de datos.'));
-        SET done = 1;
+        VALUES (mensaje_error);
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = mensaje_error;
     END;
 
     -- Llama a la función para validar el stock y almacena el resultado
@@ -534,10 +555,16 @@ BEGIN
 
         -- Cierra el cursor
         CLOSE materia_prima_cursor;
-    END IF;
+    ELSE
+        SET mensaje_error = CONCAT('La cantidad solicitada de la referencia: ',  p_id_materia_prima, ' es mayor a la que se tiene disponible en inventario.'); 
+        
+        INSERT INTO registro_errores (mensaje)
+        VALUES (mensaje_error);
 
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = mensaje_error;
+    END IF;
 END;
 
 
 
-CALL retirar_stock(80, 10.0);
+CALL retirar_stock(3, 180.0);
