@@ -157,21 +157,24 @@ PRIMARY KEY(cedulaven,semana));
 INSERT INTO ventas_x_semana VALUES
 (100, 6, 520, 850, 41, 0, 56);
 
+SELECT * FROM ventas_x_semana;
 -- Crear la siguiente tabla, la cual ya está normalizada.
 
 CREATE TABLE ventas_normalizada
 (cedula_vendedor NUMBER NOT NULL,
 semana NUMBER NOT NULL,
+dia NUMBER NOT NULL,
 ventas NUMBER not null);
 
+SELECT * FROM ventas_normalizada;
 -- Ahora hagamos el INSERT de pivote:
 
 INSERT ALL
-INTO ventas_normalizada VALUES (cedulaven,semana,ventas_lunes)
-INTO ventas_normalizada VALUES (cedulaven,semana,ventas_martes)
-INTO ventas_normalizada VALUES (cedulaven,semana,ventas_miercoles)
-INTO ventas_normalizada VALUES (cedulaven,semana,ventas_jueves)
-INTO ventas_normalizada VALUES (cedulaven,semana,ventas_viernes)
+INTO ventas_normalizada VALUES (cedulaven,semana,1,ventas_lunes)
+INTO ventas_normalizada VALUES (cedulaven,semana,2,ventas_martes)
+INTO ventas_normalizada VALUES (cedulaven,semana,3,ventas_miercoles)
+INTO ventas_normalizada VALUES (cedulaven,semana,4,ventas_jueves)
+INTO ventas_normalizada VALUES (cedulaven,semana,5,ventas_viernes)
 SELECT cedulaven, semana, ventas_lunes, ventas_martes,
 ventas_miercoles, ventas_jueves, ventas_viernes
 FROM ventas_x_semana;
@@ -204,8 +207,8 @@ sueldo NUMBER NOT NULL);
 -- destino es COPIA_EMPLEADOS.
 
 MERGE INTO copia_empleados c
-USING (SELECT * FROM empleados)
-e ON (c.cedula = e.cedula)
+USING (SELECT * FROM empleados) e 
+ON (c.cedula = e.cedula)
 WHEN MATCHED THEN
 UPDATE SET
 c.nombre = e.nombre,
@@ -214,6 +217,7 @@ c.sueldo = e.sueldo
 WHEN NOT MATCHED THEN
 INSERT VALUES (e.cedula, e.nombre, e.edad, e.sueldo);
 
+SELECT * FROM empleados;
 SELECT * FROM copia_empleados;
 
 -- Los 6 empleados que hay grabados en EMPLEADOS quedaron grabados en
@@ -252,14 +256,14 @@ WHERE cedula = 12345;
 -- Miremos el MERGE anterior con la cláusula DELETE.
 
 MERGE INTO copia_empleados c
-USING (SELECT * FROM empleados)
-e ON (c.cedula = e.cedula)
+USING (SELECT * FROM empleados) e 
+ON (c.cedula = e.cedula)
 WHEN MATCHED THEN
 UPDATE SET
 c.nombre = e.nombre,
 c.edad = e.edad,
 c.sueldo = e.sueldo
-DELETE WHERE (e.sueldo > 8800000)
+DELETE WHERE (e.sueldo > 8800000) -- Tiene efecto en el destino, pero solo despues de ejecutar el UPDATE
 WHEN NOT MATCHED THEN
 INSERT VALUES (e.cedula, e.nombre, e.edad, e.sueldo);
 
@@ -272,3 +276,8 @@ SELECT * FROM copia_empleados;
 -- actualizados con el UPDATE, no para todos los registros existentes.
 -- Verificarlo.
 
+-- ************************************************************************** --
+-- **                           TAREA                                      ** --
+-- ************************************************************************** --
+
+-- Crear un caso donde se use el INSERT FIRST (que se puedan cumplir varias condiciones)
