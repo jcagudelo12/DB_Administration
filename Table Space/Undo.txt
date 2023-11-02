@@ -1,0 +1,9 @@
+Backup y restore:
+
+1. Undo: esta muy ligado al rollback, es un CTRL + Z
+En oracle hay un tablespace de tipo Undo y este tiene asociado su DataFile
+
+permite:
+1. hacer rollback
+2. hacer flashback
+3. tener consistencia en lectura

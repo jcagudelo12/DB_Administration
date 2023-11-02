@@ -1,0 +1,8 @@
+Se tienen 3 redologs, que trabajan como un anillo
+Tiene 3 estados:
+- Active: se acabo de llenar y se va a sincronizar con la DB, para llevar los datos a los redo log files, 
+cuando acaba de escribir en disco pasa a inactivo
+- Current: es el redo log actual que oracle esta usando
+- Inactive: redolog que no se esta usando
+
+Los redo logs trabajan en ram y en disco duro
